@@ -1,36 +1,37 @@
-import OpenAI from "openai";
+import express from 'express';
+import fs from 'fs';
+import path from 'path';
 
-const client = new OpenAI({
-    apiKey: process.env.OPEN_AI_API
-});
+const app = express();
+app.use(express.json());
 
+app.post('/slack/events', (req, res) => {
+    const payload = req.body;
 
-const tools = [{
-    type: "function",
-    name: "check_engineering_ticket_status",
-    description: "Get the status of an engineering ticket and its entire content",
-    parameters: {
-        type: "object",
-        properties: {
-            ticketName: { type: "string" },
-            ticketStatus: { type: "string" }
-        },
-        required: ["ticketName", "ticketStatus"],
-        additionalProperties: false,
-    },
-    strict: true
-}];
-
-const response = await client.responses.create({
-    model: "gpt-4.1",
-    input: "how far is earth to moon?",
-    tools: tools
-});
-
-if(response.output) {
-    if(response.output[0].type === 'function_call') {
-        console.log(response.output[0].name, response.output[0].arguments)
-    } else {
-        console.log(response.output[0].content[0].text)
+    // URL verification challenge
+    if (payload.type === 'url_verification' && payload.challenge) {
+        return res.json({ challenge: payload.challenge });
     }
-}
+
+    // Handle Webhook
+    const logLine = JSON.stringify(payload) + '\n';
+    const logFile = path.resolve('./slack-events.log');
+
+    if(payload.event?.type === "app_mention") {
+        console.log(payload.event.text)
+    }
+
+    fs.appendFile(logFile, logLine, err => {
+        if (err) {
+            console.error('❌ Failed to write Slack event:', err);
+        }
+    });
+
+    res.status(200).send();
+});
+
+// start server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`⚡️ Slack event receiver listening on port ${PORT}`);
+});
